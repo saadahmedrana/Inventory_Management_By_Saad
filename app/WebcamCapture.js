@@ -2,8 +2,7 @@ import React, { useRef, useState, useCallback } from 'react';
 import Webcam from 'react-webcam';
 import { Button } from '@mui/material';
 import { getStorage, ref, uploadString } from 'firebase/storage';
-
-const storage = getStorage();
+import { storage } from './firebase'; // Adjust import path if needed
 
 const WebcamCapture = () => {
   const webcamRef = useRef(null);
@@ -13,10 +12,14 @@ const WebcamCapture = () => {
     const imageSrc = webcamRef.current.getScreenshot();
     setImage(imageSrc);
 
-    const storageRef = ref(storage, `images/${new Date().toISOString()}.jpg`);
-    uploadString(storageRef, imageSrc, 'data_url').then((snapshot) => {
-      console.log('Uploaded a data_url string!');
-    });
+    if (imageSrc) {
+      const storageRef = ref(storage, `images/${new Date().toISOString()}.jpg`);
+      uploadString(storageRef, imageSrc, 'data_url').then((snapshot) => {
+        console.log('Uploaded a data_url string!');
+      }).catch((error) => {
+        console.error('Upload failed:', error);
+      });
+    }
   }, [webcamRef]);
 
   return (
