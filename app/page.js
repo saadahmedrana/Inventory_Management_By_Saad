@@ -1,255 +1,193 @@
 'use client';
+
 import { useState, useEffect } from 'react';
-import { firestore } from '@/firebase';
-import { Box, Typography, Stack, Button, TextField, IconButton, Select, MenuItem } from '@mui/material';
-import { collection, getDocs, query, addDoc, deleteDoc, doc, updateDoc, onSnapshot } from 'firebase/firestore';
-import SearchIcon from '@mui/icons-material/Search';
-import { SnackbarProvider, useSnackbar } from 'notistack';
+import { firestore } from './firebase'; // Adjust the path if needed
+import { Box, Typography, Stack, Button, TextField, Modal } from '@mui/material';
+import { collection, getDocs, query, doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
 
-function Inventory() {
-  const { enqueueSnackbar } = useSnackbar();
-  const [inventory, setInventory] = useState([]);
-  const [open, setOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filteredInventory, setFilteredInventory] = useState([]);
-  const [itemName, setItemName] = useState('');
-  const [itemQuantity, setItemQuantity] = useState(0);
-  const [expandedItemId, setExpandedItemId] = useState(null);
-  const [sortOption, setSortOption] = useState('name');
-  const [darkMode, setDarkMode] = useState(false);
+export default function Home() {
+ const [inventory, setInventory] = useState([]);
+ const [open, setOpen] = useState(false);
+ const [itemName, setItemName] = useState('');
+ const [searchTerm, setSearchTerm] = useState('');
 
-  const updateInventory = () => {
-    const q = query(collection(firestore, 'inventory'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const inventoryList = [];
-      snapshot.forEach((doc) => {
-        inventoryList.push({
-          id: doc.id,
-          ...doc.data(),
-        });
-      });
-      setInventory(inventoryList);
-      setFilteredInventory(inventoryList);
-    });
+ const updateInventory = async () => {
+ const q = query(collection(firestore, 'inventory'));
+ const snapshot = await getDocs(q);
+ const inventoryList = [];
+ snapshot.forEach((doc) => {
+ inventoryList.push({
+ id: doc.id,
+ ...doc.data(),
+ });
+ });
+ setInventory(inventoryList);
+ };
 
-    return () => unsubscribe(); // Clean up subscription on unmount
-  };
+ const addItem = async (name) => {
+ if (!name) return; // Check for empty item name
+ const docRef = doc(collection(firestore, 'inventory'), name);
+ const docSnap = await getDoc(docRef);
+ if (docSnap.exists()) {
+ await setDoc(docRef, { name: name, quantity: docSnap.data().quantity + 1 });
+ } else {
+ await setDoc(docRef, { name: name, quantity: 1 });
+ }
+ await updateInventory();
+ };
 
-  useEffect(() => {
-    updateInventory();
-  }, []);
+ const incrementItem = async (name) => {
+ const docRef = doc(collection(firestore, 'inventory'), name);
+ const docSnap = await getDoc(docRef);
+ if (docSnap.exists()) {
+ await setDoc(docRef, { name: name, quantity: docSnap.data().quantity + 1 });
+ }
+ await updateInventory();
+ };
 
-  const handleAddItem = async () => {
-    try {
-      await addDoc(collection(firestore, 'inventory'), {
-        name: itemName,
-        quantity: itemQuantity,
-      });
-      setItemName('');
-      setItemQuantity(0);
-      setOpen(false);
-      enqueueSnackbar('Item added successfully!', { variant: 'success' });
-    } catch (error) {
-      console.error("Error adding item: ", error);
-      enqueueSnackbar('Error adding item!', { variant: 'error' });
-    }
-  };
+ const decrementItem = async (name) => {
+ const docRef = doc(collection(firestore, 'inventory'), name);
+ const docSnap = await getDoc(docRef);
+ if (docSnap.exists()) {
+ const { quantity } = docSnap.data();
+ if (quantity === 1) {
+ await deleteDoc(docRef);
+ } else {
+ await setDoc(docRef, { name: name, quantity: quantity - 1 });
+ }
+ }
+ await updateInventory();
+ };
 
-  const handleRemoveItem = async (id) => {
-    try {
-      await deleteDoc(doc(firestore, 'inventory', id));
-      enqueueSnackbar('Item removed successfully!', { variant: 'success' });
-    } catch (error) {
-      console.error("Error removing item: ", error);
-      enqueueSnackbar('Error removing item!', { variant: 'error' });
-    }
-  };
+ const removeItem = async (name) => {
+ const docRef = doc(collection(firestore, 'inventory'), name);
+ await deleteDoc(docRef);
+ await updateInventory();
+ };
 
-  const handleUpdateQuantity = async (id, increment) => {
-    try {
-      const itemDoc = doc(firestore, 'inventory', id);
-      const item = inventory.find(item => item.id === id);
-      const newQuantity = item.quantity + increment;
+ useEffect(() => {
+ updateInventory();
+ }, []);
 
-      if (newQuantity <= 0) {
-        await handleRemoveItem(id);
-      } else {
-        await updateDoc(itemDoc, {
-          quantity: newQuantity,
-        });
-        enqueueSnackbar('Quantity updated successfully!', { variant: 'success' });
-      }
-    } catch (error) {
-      console.error("Error updating quantity: ", error);
-      enqueueSnackbar('Error updating quantity!', { variant: 'error' });
-    }
-  };
+ const handleOpen = () => setOpen(true);
+ const handleClose = () => setOpen(false);
 
-  const handleSearch = () => {
-    const filteredItems = inventory.filter(item =>
-      item.name.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-    setFilteredInventory(filteredItems);
-  };
+ const filteredInventory = inventory.filter(item =>
+ item.name && item.name.toLowerCase().includes(searchTerm.toLowerCase())
+ );
 
-  const handleToggleDetails = (id) => {
-    setExpandedItemId(expandedItemId === id ? null : id);
-  };
-
-  const handleSortChange = (event) => {
-    setSortOption(event.target.value);
-  };
-
-  const sortedInventory = [...filteredInventory].sort((a, b) => {
-    if (sortOption === 'name') {
-      return a.name.localeCompare(b.name);
-    } else if (sortOption === 'quantity') {
-      return a.quantity - b.quantity;
-    }
-    return 0;
-  });
-
-  const toggleTheme = () => {
-    setDarkMode(!darkMode);
-  };
-
-  const theme = {
-    palette: {
-      mode: darkMode ? 'dark' : 'light',
-      primary: {
-        main: '#41015b',
-      },
-      background: {
-        default: darkMode ? '#303030' : '#f0f0f0',
-        paper: darkMode ? '#424242' : '#ffffff',
-      },
-      text: {
-        primary: darkMode ? '#ffffff' : '#000000',
-      },
-    },
-  };
-
-  return (
-    <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" height="100vh" bgcolor={theme.palette.background.default} color={theme.palette.text.primary} position="relative" p={2}>
-      <Box display="flex" alignItems="center" mb={2} position="absolute" top={20} left={20}>
-        <Button 
-          variant="contained" 
-          color="secondary" 
-          onClick={toggleTheme}
-          style={{ marginRight: '20px' }}
-        >
-          Toggle Theme
-        </Button>
-        <Button 
-          variant="contained" 
-          color="primary" 
-          onClick={() => setOpen(!open)} 
-        >
-          Add New Item
-        </Button>
-        {open && (
-          <Box display="flex" flexDirection="row" alignItems="center" ml={2}>
-            <TextField 
-              label="Item Name" 
-              variant="outlined" 
-              value={itemName} 
-              onChange={(e) => setItemName(e.target.value)} 
-              style={{ marginRight: '10px' }}
-            />
-            <TextField 
-              label="Item Quantity" 
-              variant="outlined" 
-              type="number"
-              value={itemQuantity} 
-              onChange={(e) => setItemQuantity(parseInt(e.target.value))} 
-              style={{ marginRight: '10px' }}
-            />
-            <Button 
-              variant="contained" 
-              color="primary" 
-              onClick={handleAddItem}
-            >
-              Add
-            </Button>
-          </Box>
-        )}
-      </Box>
-      <Box width="1650px" height="600px" bgcolor={theme.palette.background.paper} color={theme.palette.text.primary} p={4} borderRadius={2} boxShadow={3} overflow="auto">
-        <Box display="flex" alignItems="center" mb={2}>
-          <TextField 
-            label="Search Items" 
-            variant="outlined" 
-            value={searchTerm} 
-            onChange={(e) => setSearchTerm(e.target.value)} 
-            style={{ marginRight: '10px', backgroundColor: 'white' }}
-          />
-          <IconButton color="primary" onClick={handleSearch}>
-            <SearchIcon />
-          </IconButton>
-          <Select 
-            value={sortOption} 
-            onChange={handleSortChange} 
-            style={{ marginLeft: '10px' }}
-          >
-            <MenuItem value="name">Name</MenuItem>
-            <MenuItem value="quantity">Quantity</MenuItem>
-          </Select>
-        </Box>
-        <Typography variant="h4" color="primary" gutterBottom>Manage Your Inventory</Typography>
-        <Stack spacing={2} width="100%">
-          {sortedInventory.map(item => (
-            <Box key={item.id} p={2} border={1} borderColor="grey.400" borderRadius={2} display="flex" justifyContent="space-between" alignItems="center" onClick={() => handleToggleDetails(item.id)}>
-              <Box>
-                <Typography variant="h6" color="textPrimary">{item.name}</Typography>
-                <Typography variant="body1" color="textPrimary">Quantity: {item.quantity}</Typography>
-                {expandedItemId === item.id && (
-                  <Typography variant="body2" color="textSecondary">Additional details here</Typography>
-                )}
-              </Box>
-              <Box display="flex" gap={1}>
-                <Button 
-                  variant="outlined" 
-                  color="primary" 
-                  onClick={() => handleUpdateQuantity(item.id, 1)}
-                >
-                  +1
-                </Button>
-                <Button 
-                  variant="outlined" 
-                  color="primary" 
-                  onClick={() => handleUpdateQuantity(item.id, -1)}
-                  disabled={item.quantity <= 0}
-                >
-                  -1
-                </Button>
-                <Button 
-                  variant="outlined" 
-                  color="error" 
-                  onClick={() => handleRemoveItem(item.id)}
-                >
-                  Remove
-                </Button>
-              </Box>
-            </Box>
-          ))}
-        </Stack>
-      </Box>
-      <Typography 
-        variant="body2" 
-        color="textSecondary" 
-        align="center" 
-        style={{ position: 'absolute', bottom: 20, width: '100%' }}
-      >
-        Thank you for using my website
-      </Typography>
-    </Box>
-  );
-}
-
-export default function Page() {
-  return (
-    <SnackbarProvider maxSnack={3}>
-      <Inventory />
-    </SnackbarProvider>
-  );
+ return (
+ <Box
+ width="100vw"
+ height="100vh"
+ display={'flex'}
+ justifyContent={'center'}
+ flexDirection={'column'}
+ alignItems={'center'}
+ gap={2}
+ sx={{
+ backgroundImage: 'url(/Screenshot%20(6).png)', // Reference image in the public directory
+ backgroundSize: 'cover',
+ backgroundPosition: 'center',
+ backgroundAttachment: 'fixed',
+ }}
+ >
+ <Modal
+ open={open}
+ onClose={handleClose}
+ aria-labelledby="modal-modal-title"
+ aria-describedby="modal-modal-description"
+ >
+ <Box sx={{
+ position: 'absolute',
+ top: '50%',
+ left: '50%',
+ transform: 'translate(-50%, -50%)',
+ width: 400,
+ bgcolor: 'background.paper',
+ border: '2px solid #000',
+ boxShadow: 24,
+ p: 4,
+ }}>
+ <Typography id="modal-modal-title" variant="h6" component="h2">
+ Add Item
+ </Typography>
+ <Stack width="100%" direction={'row'} spacing={2}>
+ <TextField
+ id="outlined-basic"
+ label="Item"
+ variant="outlined"
+ fullWidth
+ value={itemName}
+ onChange={(e) => setItemName(e.target.value)}
+ />
+ <Button
+ variant="outlined"
+ onClick={() => {
+ addItem(itemName);
+ setItemName('');
+ handleClose();
+ }}
+ >
+ Add
+ </Button>
+ </Stack>
+ </Box>
+ </Modal>
+ <Button variant="contained" onClick={handleOpen}>
+ Add New Item
+ </Button>
+ <TextField
+ label="Search"
+ variant="outlined"
+ value={searchTerm}
+ onChange={(e) => setSearchTerm(e.target.value)}
+ sx={{ marginBottom: 2 }}
+ />
+ <Box border={'1px solid #333'}>
+ <Box
+ width="800px"
+ height="100px"
+ bgcolor={'hashtag#ADD8E6'}
+ display={'flex'}
+ justifyContent={'center'}
+ alignItems={'center'}
+ >
+ <Typography variant={'h2'} color={'#333'} textAlign={'center'}>
+ Inventory Items
+ </Typography>
+ </Box>
+ <Stack width="800px" height="300px" spacing={2} overflow={'auto'}>
+ {filteredInventory.map(({ id, name, quantity }) => (
+ <Box
+ key={id}
+ width="100%"
+ minHeight="150px"
+ display={'flex'}
+ justifyContent={'space-between'}
+ alignItems={'center'}
+ bgcolor={'hashtag#f0f0f0'}
+ paddingX={5}
+ >
+ <Box display="flex" alignItems="center" justifyContent="space-between" width="100%">
+ <Typography variant={'h3'} color={'#333'} textAlign={'center'}>
+ {name.charAt(0).toUpperCase() + name.slice(1)}
+ </Typography>
+ <Typography variant={'h3'} color={'#333'} textAlign={'center'}>
+ Quantity: {quantity}
+ </Typography>
+ <Box display="flex" alignItems="center">
+ <Button variant="outlined" onClick={() => incrementItem(name)}>+</Button>
+ <Button variant="outlined" onClick={() => decrementItem(name)}>-</Button>
+ </Box>
+ <Button variant="contained" onClick={() => removeItem(name)}>
+ Remove
+ </Button>
+ </Box>
+ </Box>
+ ))}
+ </Stack>
+ </Box>
+ </Box>
+ );
 }
